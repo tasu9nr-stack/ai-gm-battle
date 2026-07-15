@@ -57,6 +57,12 @@ def _conn():
         conn.close()
 
 
+# 管理者が採用した自己申告パッシブは、静的カタログとは別テーブルに追加し、
+# catalog_index = CATALOG_EXTRA_OFFSET + catalog_extra.id として合算プールで扱う。
+# （静的リストの件数が変わってもインデックスがずれないようにオフセットを大きく取る）
+CATALOG_EXTRA_OFFSET = 1000
+
+
 def init_db() -> None:
     with _conn() as conn:
         conn.execute(
@@ -76,6 +82,26 @@ def init_db() -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_catalog
             ON daily_assignment(assigned_date, catalog_index)
             WHERE catalog_index IS NOT NULL
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS catalog_extra (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                desc TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS custom_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id TEXT NOT NULL,
+                text TEXT NOT NULL,
+                submitted_date TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+            )
             """
         )
 
@@ -106,17 +132,27 @@ def _used_catalog_indices_today(conn: sqlite3.Connection) -> set[int]:
     return {r["catalog_index"] for r in rows}
 
 
+def _all_catalog_entries(conn: sqlite3.Connection) -> dict[int, dict]:
+    """静的カタログ + 管理者が採用したカタログを合算し、{index: {"name","desc"}} で返す。"""
+    entries = {i: p for i, p in enumerate(PASSIVE_CATALOG)}
+    rows = conn.execute("SELECT id, name, desc FROM catalog_extra").fetchall()
+    for r in rows:
+        entries[CATALOG_EXTRA_OFFSET + r["id"]] = {"name": r["name"], "desc": r["desc"]}
+    return entries
+
+
 def assign_random_passive(player_id: str) -> dict | None:
     """今日まだ誰にも配られていないカタログ内パッシブを1つランダムに割り当てる。
     プール枯渇時はNoneを返す（呼び出し側で自己申告フローに切り替える）。"""
     for _ in range(5):  # 同時アクセスによる重複競合時の簡易リトライ
         with _conn() as conn:
+            catalog = _all_catalog_entries(conn)
             used = _used_catalog_indices_today(conn)
-            available = [i for i in range(len(PASSIVE_CATALOG)) if i not in used]
+            available = [i for i in catalog if i not in used]
             if not available:
                 return None
             idx = random.choice(available)
-            entry = PASSIVE_CATALOG[idx]
+            entry = catalog[idx]
             try:
                 conn.execute(
                     """
@@ -155,7 +191,46 @@ def assign_custom_passive(player_id: str, text: str) -> dict:
             """,
             (player_id, text, text, _today()),
         )
+        conn.execute(
+            "INSERT INTO custom_submissions (player_id, text, submitted_date) VALUES (?, ?, ?)",
+            (player_id, text, _today()),
+        )
     return {"name": text, "desc": text, "is_custom": True}
+
+
+def list_pending_submissions() -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM custom_submissions WHERE status = 'pending' ORDER BY id DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def adopt_submission(submission_id: int) -> dict | None:
+    """自己申告パッシブを正式にカタログへ採用し、以後のガチャ抽選対象に加える。"""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM custom_submissions WHERE id = ? AND status = 'pending'",
+            (submission_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "INSERT INTO catalog_extra (name, desc) VALUES (?, ?)", (row["text"], row["text"])
+        )
+        conn.execute(
+            "UPDATE custom_submissions SET status = 'adopted' WHERE id = ?", (submission_id,)
+        )
+    return {"text": row["text"]}
+
+
+def reject_submission(submission_id: int) -> bool:
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE custom_submissions SET status = 'rejected' WHERE id = ? AND status = 'pending'",
+            (submission_id,),
+        )
+    return cur.rowcount > 0
 
 
 def get_or_assign_daily_passive(player_id: str) -> dict:

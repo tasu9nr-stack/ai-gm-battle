@@ -25,11 +25,17 @@
     return id;
   }
 
+  function todayLocalDateStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
   const playerId = getPlayerId();
   let ws = null;
   let lastLogLength = 0;
   let actionSubmittedThisRound = false;
   let selectedCategory = null;
+  let pendingGachaPassive = null;
 
   const screenHome = $("screen-home");
   const screenBattle = $("screen-battle");
@@ -42,6 +48,8 @@
   function showPassive(data) {
     $("passive-loading").classList.add("hidden");
     $("passive-custom-form").classList.add("hidden");
+    $("gacha-panel").classList.add("hidden");
+    $("gacha-animation").classList.add("hidden");
     $("passive-card").classList.remove("hidden");
     $("passive-name").textContent = data.name;
     $("passive-desc").textContent = data.desc;
@@ -56,11 +64,26 @@
         $("passive-custom-form").classList.remove("hidden");
         return;
       }
-      showPassive(data);
+      if (localStorage.getItem("gacha_seen_date") === todayLocalDateStr()) {
+        showPassive(data);
+      } else {
+        pendingGachaPassive = data;
+        $("gacha-panel").classList.remove("hidden");
+      }
     } catch (e) {
       $("passive-loading").textContent = "パッシブの取得に失敗しました。サーバーを確認してください。";
     }
   }
+
+  $("btn-gacha").addEventListener("click", () => {
+    $("gacha-panel").classList.add("hidden");
+    $("gacha-animation").classList.remove("hidden");
+    setTimeout(() => {
+      $("gacha-animation").classList.add("hidden");
+      showPassive(pendingGachaPassive);
+      localStorage.setItem("gacha_seen_date", todayLocalDateStr());
+    }, 1100);
+  });
 
   $("btn-submit-custom").addEventListener("click", async () => {
     const text = $("input-custom-passive").value.trim();
@@ -78,6 +101,7 @@
     }
     const data = await res.json();
     showPassive(data);
+    localStorage.setItem("gacha_seen_date", todayLocalDateStr());
   });
 
   function wsUrl(roomCode) {

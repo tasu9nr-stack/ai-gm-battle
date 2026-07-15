@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>パッシブ管理</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .submission-card { display: flex; flex-direction: column; gap: 8px; }
+  .submission-meta { font-size: 0.75rem; color: var(--text-dim); }
+  .submission-actions { display: flex; gap: 8px; }
+  .submission-actions button { flex: 1; }
+  #empty-state { text-align: center; color: var(--text-dim); padding: 20px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>パッシブ管理</h1>
+  <p class="hint" style="text-align:center;">未採用の自己申告パッシブ一覧（採用すると翌回のガチャ抽選対象に加わります）</p>
+  <div id="list"></div>
+  <div id="empty-state" class="hidden">未採用の申告はありません。</div>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const key = new URLSearchParams(location.search).get("key") || "";
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function load() {
+    const res = await fetch(`/api/admin/submissions?key=${encodeURIComponent(key)}`);
+    if (!res.ok) {
+      $("list").innerHTML = "<p class='hint'>アクセスできません（合言葉が違うかもしれません）。</p>";
+      return;
+    }
+    const items = await res.json();
+    $("empty-state").classList.toggle("hidden", items.length > 0);
+    $("list").innerHTML = items
+      .map(
+        (item) => `
+        <div class="card submission-card" data-id="${item.id}">
+          <div class="passive-name">${escapeHtml(item.text)}</div>
+          <div class="submission-meta">申告日: ${escapeHtml(item.submitted_date)} / player_id: ${escapeHtml(item.player_id.slice(0, 8))}...</div>
+          <div class="submission-actions">
+            <button class="btn-primary btn-adopt">採用してプールに追加</button>
+            <button class="btn-secondary btn-reject">却下</button>
+          </div>
+        </div>`
+      )
+      .join("");
+
+    document.querySelectorAll(".btn-adopt").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const id = e.target.closest(".submission-card").dataset.id;
+        await fetch(`/api/admin/submissions/${id}/adopt?key=${encodeURIComponent(key)}`, { method: "POST" });
+        load();
+      });
+    });
+    document.querySelectorAll(".btn-reject").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const id = e.target.closest(".submission-card").dataset.id;
+        await fetch(`/api/admin/submissions/${id}/reject?key=${encodeURIComponent(key)}`, { method: "POST" });
+        load();
+      });
+    });
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 import string
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -17,6 +18,7 @@ import storage
 BASE_DIR = Path(__file__).parent
 DEFAULT_MAX_HP = 100
 MAX_HP_CAP = 999
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
 
 app = FastAPI()
 storage.init_db()
@@ -69,6 +71,44 @@ async def api_passive_custom(payload: dict = Body(...)):
     if not text.strip():
         return JSONResponse({"error": "empty_text"}, status_code=400)
     return JSONResponse(storage.assign_custom_passive(player_id, text))
+
+
+def _check_admin_key(key: str) -> bool:
+    return bool(ADMIN_KEY) and key == ADMIN_KEY
+
+
+@app.get("/admin/passives")
+async def admin_passives_page(key: str = ""):
+    if not _check_admin_key(key):
+        return HTMLResponse("<h1>403 Forbidden</h1>", status_code=403)
+    return FileResponse(BASE_DIR / "static" / "admin.html")
+
+
+@app.get("/api/admin/submissions")
+async def api_admin_submissions(key: str = ""):
+    if not _check_admin_key(key):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    return JSONResponse(storage.list_pending_submissions())
+
+
+@app.post("/api/admin/submissions/{submission_id}/adopt")
+async def api_admin_adopt(submission_id: int, key: str = ""):
+    if not _check_admin_key(key):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    result = storage.adopt_submission(submission_id)
+    if result is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/admin/submissions/{submission_id}/reject")
+async def api_admin_reject(submission_id: int, key: str = ""):
+    if not _check_admin_key(key):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    ok = storage.reject_submission(submission_id)
+    if not ok:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/rooms")
