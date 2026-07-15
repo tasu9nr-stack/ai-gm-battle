@@ -253,7 +253,35 @@
   $("btn-back-home").addEventListener("click", () => {
     if (ws) ws.close();
     showScreen("home");
+    loadPoints();
+  });
+
+  async function loadPoints() {
+    const res = await fetch(`/api/points?player_id=${encodeURIComponent(playerId)}`);
+    const data = await res.json();
+    $("points-value").textContent = data.points;
+  }
+
+  $("btn-submit-passive").addEventListener("click", async () => {
+    const text = $("input-submit-passive").value.trim();
+    if (!text) return;
+    const res = await fetch("/api/passive/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player_id: playerId, text }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      $("submit-passive-status").textContent =
+        err.error === "insufficient_points" ? "ポイントが足りません（10pt必要です）。" : "申請できませんでした。";
+      return;
+    }
+    const data = await res.json();
+    $("points-value").textContent = data.points;
+    $("input-submit-passive").value = "";
+    $("submit-passive-status").textContent = "申請しました。管理者の採用をお待ちください。";
   });
 
   loadPassive();
+  loadPoints();
 })();

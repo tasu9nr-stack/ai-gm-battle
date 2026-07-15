@@ -104,6 +104,14 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS players (
+                player_id TEXT PRIMARY KEY,
+                points INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
 
 
 def _row_to_passive(row: sqlite3.Row) -> dict:
@@ -241,3 +249,55 @@ def get_or_assign_daily_passive(player_id: str) -> dict:
     if assigned:
         return assigned
     return {"pool_exhausted": True}
+
+
+SUBMIT_PASSIVE_COST = 10
+
+
+def get_points(player_id: str) -> int:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT points FROM players WHERE player_id = ?", (player_id,)
+        ).fetchone()
+    return row["points"] if row else 0
+
+
+def add_point(player_id: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO players (player_id, points) VALUES (?, 1)
+            ON CONFLICT(player_id) DO UPDATE SET points = points + 1
+            """,
+            (player_id,),
+        )
+
+
+def spend_points(player_id: str, amount: int) -> bool:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT points FROM players WHERE player_id = ?", (player_id,)
+        ).fetchone()
+        current = row["points"] if row else 0
+        if current < amount:
+            return False
+        conn.execute(
+            "UPDATE players SET points = points - ? WHERE player_id = ?", (amount, player_id)
+        )
+    return True
+
+
+def submit_custom_passive_via_points(player_id: str, text: str) -> dict | None:
+    """ポイントを消費して自作パッシブを管理者レビュー待ちキューに申請する。
+    ポイント不足時はNoneを返す。"""
+    text = text.strip()[:15]
+    if not text:
+        return None
+    if not spend_points(player_id, SUBMIT_PASSIVE_COST):
+        return None
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO custom_submissions (player_id, text, submitted_date) VALUES (?, ?, ?)",
+            (player_id, text, _today()),
+        )
+    return {"text": text, "points": get_points(player_id)}

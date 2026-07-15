@@ -43,6 +43,16 @@
     </div>
 
     <div class="card">
+      <h2>ポイント</h2>
+      <div class="points-display">🏆 <span id="points-value">0</span> pt</div>
+      <p class="hint">対戦に勝利すると1ポイント獲得できます。10ポイント消費で自作パッシブを申請できます（採用されると共通プールに追加されます）。</p>
+      <label class="field-label" for="input-submit-passive">自作パッシブ（15文字以内）</label>
+      <input id="input-submit-passive" placeholder="例：時渡りの加護" maxlength="15">
+      <button id="btn-submit-passive" class="btn-secondary">申請する（10pt消費）</button>
+      <div id="submit-passive-status" class="hint"></div>
+    </div>
+
+    <div class="card">
       <h2>部屋を作る</h2>
       <label class="field-label" for="input-max-hp">HP（両者共通）</label>
       <input id="input-max-hp" type="number" value="100" min="1" max="999">

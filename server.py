@@ -73,6 +73,23 @@ async def api_passive_custom(payload: dict = Body(...)):
     return JSONResponse(storage.assign_custom_passive(player_id, text))
 
 
+@app.get("/api/points")
+async def api_points(player_id: str):
+    return JSONResponse({"points": storage.get_points(player_id)})
+
+
+@app.post("/api/passive/submit")
+async def api_passive_submit(payload: dict = Body(...)):
+    player_id = payload["player_id"]
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        return JSONResponse({"error": "empty_text"}, status_code=400)
+    result = storage.submit_custom_passive_via_points(player_id, text)
+    if result is None:
+        return JSONResponse({"error": "insufficient_points"}, status_code=402)
+    return JSONResponse(result)
+
+
 def _check_admin_key(key: str) -> bool:
     return bool(ADMIN_KEY) and key == ADMIN_KEY
 
@@ -242,6 +259,10 @@ async def ws_room(websocket: WebSocket, room_code: str, player_id: str):
                     room.hp["b"] = max(0, min(room.max_hp, room.hp["b"] + result["hp_delta_b"]))
                     room.log.append(result["narration"])
                     room.game_over = room.hp["a"] <= 0 or room.hp["b"] <= 0
+                    if room.game_over:
+                        winner_role = _winner(room)
+                        if winner_role in ("a", "b"):
+                            storage.add_point(room.players[winner_role])
                     for r in list(room.sockets):
                         await _send_state(room, r)
     except WebSocketDisconnect:

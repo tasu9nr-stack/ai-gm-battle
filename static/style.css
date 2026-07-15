@@ -71,6 +71,13 @@ h2 {
   to { transform: scale(1); opacity: 1; }
 }
 
+.points-display {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
 .gacha-panel {
   text-align: center;
 }
