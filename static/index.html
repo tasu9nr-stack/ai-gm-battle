@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>AI GM バトル</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <section id="screen-home" class="screen">
+    <h1>AI GM バトル</h1>
+
+    <div class="card">
+      <h2>今日のパッシブ</h2>
+      <div id="passive-loading">読み込み中...</div>
+
+      <div id="passive-card" class="passive hidden">
+        <div class="passive-name" id="passive-name"></div>
+        <div class="passive-desc" id="passive-desc"></div>
+      </div>
+
+      <div id="passive-custom-form" class="hidden">
+        <p class="hint">共通パッシブプールを今日は使い切りました。あなた専用のパッシブを15文字以内で申告してください。</p>
+        <div class="row">
+          <input id="input-custom-passive" placeholder="例：影に潜む者" maxlength="15">
+          <button id="btn-submit-custom" class="btn-secondary">確定</button>
+        </div>
+        <div id="custom-status" class="hint"></div>
+      </div>
+
+      <p class="hint">パッシブは毎日0時に更新され、その日は何度対戦しても同じです。対戦中は相手には非公開で、決着後に公開されます。</p>
+    </div>
+
+    <div class="card">
+      <h2>部屋を作る</h2>
+      <label class="field-label" for="input-max-hp">HP（両者共通）</label>
+      <input id="input-max-hp" type="number" value="100" min="1" max="999">
+      <label class="field-label" for="input-place">場所</label>
+      <input id="input-place" placeholder="例：廃墟と化した闘技場">
+      <label class="field-label" for="input-time">時間</label>
+      <input id="input-time" placeholder="例：夕暮れ">
+      <label class="field-label" for="input-situation">周囲の状況</label>
+      <input id="input-situation" placeholder="例：観衆が遠巻きに見守っている">
+      <button id="btn-create-room" class="btn-primary">部屋を作る</button>
+    </div>
+
+    <div class="card">
+      <h2>部屋に参加する</h2>
+      <div class="row">
+        <input id="input-room-code" placeholder="部屋コード" maxlength="5" autocapitalize="characters">
+        <button id="btn-join-room" class="btn-secondary">参加</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-battle" class="screen hidden">
+    <div id="stage-banner" class="hint stage-banner"></div>
+    <div id="waiting-banner" class="hidden">相手の参加を待っています...</div>
+
+    <div class="hp-panel">
+      <div class="hp-block">
+        <div class="hp-label">あなた</div>
+        <div class="hp-bar"><div id="hp-you-fill" class="hp-fill"></div></div>
+        <div id="hp-you-text" class="hp-text"></div>
+        <div class="passive-mini">
+          <span id="passive-you-name"></span>
+          <span class="passive-mini-desc" id="passive-you-desc"></span>
+        </div>
+      </div>
+      <div class="hp-vs">VS</div>
+      <div class="hp-block">
+        <div class="hp-label">相手</div>
+        <div class="hp-bar"><div id="hp-opp-fill" class="hp-fill hp-fill-opp"></div></div>
+        <div id="hp-opp-text" class="hp-text"></div>
+        <div class="passive-mini">
+          <span id="passive-opp-name">???</span>
+          <span class="passive-mini-desc" id="passive-opp-desc">決着後に公開されます</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="log" class="log"></div>
+
+    <div id="game-over-panel" class="card hidden">
+      <div id="game-over-text"></div>
+      <button id="btn-back-home" class="btn-primary">ホームに戻る</button>
+    </div>
+
+    <div id="action-panel" class="card">
+      <div class="category-row">
+        <button class="category-btn" data-category="攻撃">攻撃</button>
+        <button class="category-btn" data-category="防御">防御</button>
+        <button class="category-btn" data-category="特殊">特殊</button>
+        <button class="category-btn" data-category="カウンター">カウンター</button>
+      </div>
+      <input id="input-action-text" placeholder="行動の内容を入力（例：全力で殴りかかる）" maxlength="200">
+      <button id="btn-send-action" class="btn-primary">宣言</button>
+      <div id="action-status" class="hint"></div>
+    </div>
+  </section>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
