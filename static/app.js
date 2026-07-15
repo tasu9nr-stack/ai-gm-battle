@@ -1,6 +1,21 @@
 (() => {
   const $ = (id) => document.getElementById(id);
 
+  const RANDOM_PLACES = [
+    "廃墟と化した闘技場", "深い霧に包まれた森", "崩れかけた古城の中庭",
+    "満天の星空の下、砂漠のオアシス", "波打ち際の岩場", "誰もいない廃校の屋上",
+    "雲の上に浮かぶ神殿", "灯りの消えた地下水路", "桜が舞う古い橋の上", "凍てついた氷の洞窟",
+  ];
+  const RANDOM_TIMES = [
+    "夜明け前", "真昼", "夕暮れ", "真夜中", "嵐の最中", "雨上がりの直後", "満月の夜",
+  ];
+  const RANDOM_SITUATIONS = [
+    "観衆が遠巻きに見守っている", "誰も見ていない静寂の中", "遠くで鐘の音が鳴り響いている",
+    "強風が吹き荒れている", "地面がわずかに揺れている", "不気味な鳥の声が響いている",
+    "祭りの喧騒がかすかに聞こえる", "何者かの視線を感じる",
+  ];
+  const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
   function getPlayerId() {
     let id = localStorage.getItem("player_id");
     if (!id) {
@@ -156,6 +171,12 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  $("btn-random-stage").addEventListener("click", () => {
+    $("input-place").value = pickRandom(RANDOM_PLACES);
+    $("input-time").value = pickRandom(RANDOM_TIMES);
+    $("input-situation").value = pickRandom(RANDOM_SITUATIONS);
+  });
 
   $("btn-create-room").addEventListener("click", async () => {
     const maxHp = parseInt($("input-max-hp").value, 10) || 100;
