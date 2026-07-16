@@ -167,6 +167,21 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.room-code-banner {
+  text-align: center;
+  background: var(--panel-2);
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+}
+
+.room-code-banner span {
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
 .category-row {
   display: flex;
   gap: 6px;

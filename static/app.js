@@ -120,6 +120,8 @@
     $("input-action-text").value = "";
     $("action-status").textContent = "";
     document.querySelectorAll(".category-btn").forEach((b) => b.classList.remove("selected"));
+    $("room-code-value").textContent = roomCode;
+    $("room-code-banner").classList.remove("hidden");
 
     ws = new WebSocket(wsUrl(roomCode));
 
