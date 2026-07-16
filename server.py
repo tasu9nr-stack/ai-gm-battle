@@ -85,6 +85,8 @@ def _send_verification_email(to_email: str, username: str, token: str, base_url:
         headers={
             "Authorization": f"Bearer {RESEND_API_KEY}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "ai-gm-battle/1.0 (+https://ai-gm-battle.onrender.com)",
         },
         method="POST",
     )
