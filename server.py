@@ -104,16 +104,17 @@ def _send_verification_email(to_email: str, username: str, token: str, base_url:
 @app.post("/api/auth/signup")
 async def api_auth_signup(payload: dict = Body(...), request: Request = None):
     username = str(payload.get("username", ""))
+    login_id = str(payload.get("login_id", ""))
     email = str(payload.get("email", ""))
     password = str(payload.get("password", ""))
-    result = storage.create_user(username, email, password)
+    result = storage.create_user(username, login_id, email, password)
     if result is None:
         return JSONResponse({"error": "invalid_or_taken"}, status_code=409)
 
     if not RESEND_API_KEY:
         # メール送信が未設定な環境（ローカル開発など）では確認をスキップして即利用可能にする。
-        storage.force_verify(username)
-        return JSONResponse({"ok": True, "auto_verified": True, "player_id": username})
+        storage.force_verify(login_id)
+        return JSONResponse({"ok": True, "auto_verified": True, "player_id": login_id})
 
     base_url = str(request.base_url).rstrip("/")
     sent = _send_verification_email(email, username, result["verify_token"], base_url)
@@ -122,19 +123,19 @@ async def api_auth_signup(payload: dict = Body(...), request: Request = None):
 
 @app.get("/api/auth/verify")
 async def api_auth_verify(token: str):
-    username = storage.verify_email(token)
-    if username is None:
+    login_id = storage.verify_email(token)
+    if login_id is None:
         return HTMLResponse("<h1>確認リンクが無効か、期限切れです。</h1>", status_code=400)
     return HTMLResponse(
-        f"<h1>{username} さんのメール確認が完了しました。</h1><p><a href='/'>ログイン画面に戻る</a></p>"
+        f"<h1>{login_id} さんのメール確認が完了しました。</h1><p><a href='/'>ログイン画面に戻る</a></p>"
     )
 
 
 @app.post("/api/auth/login")
 async def api_auth_login(payload: dict = Body(...)):
-    username = str(payload.get("username", ""))
+    login_id = str(payload.get("login_id", ""))
     password = str(payload.get("password", ""))
-    result = storage.verify_user(username, password)
+    result = storage.verify_user(login_id, password)
     if result is None:
         return JSONResponse({"error": "invalid_credentials"}, status_code=401)
     if result.get("email_not_verified"):
@@ -211,6 +212,16 @@ async def api_admin_reject(submission_id: int, key: str = ""):
     ok = storage.reject_submission(submission_id)
     if not ok:
         return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/admin/reset")
+async def api_admin_reset(key: str = ""):
+    """全アカウント・パッシブ・ポイント・申請を削除して初期状態に戻す。取り消せません。"""
+    if not _check_admin_key(key):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    storage.reset_all_data()
+    rooms.clear()
     return JSONResponse({"ok": True})
 
 

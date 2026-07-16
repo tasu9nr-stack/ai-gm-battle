@@ -19,6 +19,13 @@
   <p class="hint" style="text-align:center;">未採用の自己申告パッシブ一覧（採用すると翌回のガチャ抽選対象に加わります）</p>
   <div id="list"></div>
   <div id="empty-state" class="hidden">未採用の申告はありません。</div>
+
+  <div class="card" style="margin-top:24px;">
+    <h2>⚠️ 全データリセット</h2>
+    <p class="hint">全アカウント・パッシブ・ポイント・申請を削除して初期状態に戻します。取り消せません。</p>
+    <button id="btn-reset-all" class="btn-secondary" style="border-color:var(--danger); color:var(--danger);">全部リセットする</button>
+    <div id="reset-status" class="hint"></div>
+  </div>
 </div>
 <script>
 (() => {
@@ -68,6 +75,14 @@
       });
     });
   }
+
+  $("btn-reset-all").addEventListener("click", async () => {
+    const answer = prompt("本当に全データを削除します。よければ「リセット」と入力してください。");
+    if (answer !== "リセット") return;
+    const res = await fetch(`/api/admin/reset?key=${encodeURIComponent(key)}`, { method: "POST" });
+    $("reset-status").textContent = res.ok ? "リセットしました。" : "リセットに失敗しました。";
+    load();
+  });
 
   load();
 })();

@@ -117,39 +117,43 @@ def init_db() -> None:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
+                login_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 salt TEXT NOT NULL,
-                created_date TEXT NOT NULL
+                created_date TEXT NOT NULL,
+                email TEXT,
+                email_verified INTEGER NOT NULL DEFAULT 0,
+                verify_token TEXT,
+                verify_token_expires TEXT
             )
             """
         )
-        # メール確認機能を後から追加した際のマイグレーション。
-        # 既存ユーザーはemail=NULLのままとなり、ログイン時の確認必須チェックの対象外になる。
-        for coldef in (
-            "ALTER TABLE users ADD COLUMN email TEXT",
-            "ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN verify_token TEXT",
-            "ALTER TABLE users ADD COLUMN verify_token_expires TEXT",
-        ):
-            try:
-                conn.execute(coldef)
-            except sqlite3.OperationalError:
-                pass  # 既に列が存在する
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
         )
+
+
+def reset_all_data() -> None:
+    """全ゲームデータを削除して初期状態に戻す（アカウント・パッシブ・ポイント・申請すべて）。
+    テーブル構造はinit_db()で直後に再作成される。"""
+    with _conn() as conn:
+        for table in ("users", "daily_assignment", "players", "custom_submissions", "catalog_extra"):
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
+    init_db()
 
 
 def _hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
 
 
-def create_user(username: str, email: str, password: str) -> dict | None:
-    """アカウントを新規作成する。ユーザー名/メールが既に使われていればNoneを返す。"""
+def create_user(username: str, login_id: str, email: str, password: str) -> dict | None:
+    """アカウントを新規作成する。ユーザー名（表示名）は重複可、ログインIDは重複不可。
+    ログインIDまたはメールが既に使われていればNoneを返す。"""
     username = username.strip()[:30]
+    login_id = login_id.strip()[:30]
     email = email.strip().lower()[:200]
-    if not username or not password or "@" not in email:
+    if not username or not login_id or not password or "@" not in email:
         return None
     salt = secrets.token_hex(16)
     password_hash = _hash_password(password, salt)
@@ -160,48 +164,48 @@ def create_user(username: str, email: str, password: str) -> dict | None:
             conn.execute(
                 """
                 INSERT INTO users
-                    (username, password_hash, salt, created_date, email, email_verified, verify_token, verify_token_expires)
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                    (login_id, username, password_hash, salt, created_date, email, email_verified, verify_token, verify_token_expires)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
                 """,
-                (username, password_hash, salt, _today(), email, verify_token, expires),
+                (login_id, username, password_hash, salt, _today(), email, verify_token, expires),
             )
         except sqlite3.IntegrityError:
             return None
-    return {"player_id": username, "email": email, "verify_token": verify_token}
+    return {"player_id": login_id, "email": email, "verify_token": verify_token}
 
 
-def force_verify(username: str) -> None:
+def force_verify(login_id: str) -> None:
     """メール送信が未設定な環境（ローカル開発など）で確認をスキップする。"""
     with _conn() as conn:
         conn.execute(
-            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE username = ?",
-            (username,),
+            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE login_id = ?",
+            (login_id,),
         )
 
 
 def verify_email(token: str) -> str | None:
-    """確認トークンを検証し、成功したユーザー名を返す。失敗/期限切れならNone。"""
+    """確認トークンを検証し、成功したログインIDを返す。失敗/期限切れならNone。"""
     with _conn() as conn:
         row = conn.execute(
-            "SELECT username, verify_token_expires FROM users WHERE verify_token = ?", (token,)
+            "SELECT login_id, verify_token_expires FROM users WHERE verify_token = ?", (token,)
         ).fetchone()
         if row is None:
             return None
         if row["verify_token_expires"] and datetime.fromisoformat(row["verify_token_expires"]) < datetime.now(JST):
             return None
         conn.execute(
-            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE username = ?",
-            (row["username"],),
+            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE login_id = ?",
+            (row["login_id"],),
         )
-    return row["username"]
+    return row["login_id"]
 
 
-def verify_user(username: str, password: str) -> dict | None:
-    """ユーザー名+パスワードを検証する。不一致ならNone、メール未確認ならemail_not_verifiedを立てて返す。"""
-    username = username.strip()[:30]
+def verify_user(login_id: str, password: str) -> dict | None:
+    """ログインID+パスワードを検証する。不一致ならNone、メール未確認ならemail_not_verifiedを立てて返す。"""
+    login_id = login_id.strip()[:30]
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
+            "SELECT * FROM users WHERE login_id = ?", (login_id,)
         ).fetchone()
     if row is None:
         return None
@@ -209,7 +213,7 @@ def verify_user(username: str, password: str) -> dict | None:
         return None
     if row["email"] and not row["email_verified"]:
         return {"email_not_verified": True}
-    return {"player_id": username}
+    return {"player_id": login_id, "username": row["username"]}
 
 
 def _row_to_passive(row: sqlite3.Row) -> dict:

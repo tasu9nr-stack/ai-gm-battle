@@ -56,34 +56,35 @@
   }
 
   $("btn-login").addEventListener("click", async () => {
-    const username = $("input-username").value.trim();
+    const loginId = $("input-login-id").value.trim();
     const password = $("input-password").value;
-    if (!username || !password) return;
-    const { ok, status, data } = await authRequest("/api/auth/login", { username, password });
+    if (!loginId || !password) return;
+    const { ok, status, data } = await authRequest("/api/auth/login", { login_id: loginId, password });
     if (!ok) {
       $("auth-status").textContent =
         status === 403
           ? "メールアドレスがまだ確認されていません。届いたメールのリンクをクリックしてください。"
-          : "ユーザー名またはパスワードが違います。";
+          : "ログインIDまたはパスワードが違います。";
       return;
     }
     playerId = data.player_id;
     localStorage.setItem("player_id", playerId);
-    localStorage.setItem("username", username);
+    localStorage.setItem("username", data.username || loginId);
     enterHome();
   });
 
   $("btn-signup").addEventListener("click", async () => {
+    const loginId = $("input-login-id").value.trim();
     const username = $("input-username").value.trim();
     const email = $("input-email").value.trim();
     const password = $("input-password").value;
-    if (!username || !email || !password) {
-      $("auth-status").textContent = "ユーザー名・メールアドレス・パスワードを入力してください。";
+    if (!loginId || !username || !email || !password) {
+      $("auth-status").textContent = "ログインID・表示名・メールアドレス・パスワードを入力してください。";
       return;
     }
-    const { ok, data } = await authRequest("/api/auth/signup", { username, email, password });
+    const { ok, data } = await authRequest("/api/auth/signup", { username, login_id: loginId, email, password });
     if (!ok) {
-      $("auth-status").textContent = "そのユーザー名またはメールアドレスは既に使われています。";
+      $("auth-status").textContent = "そのログインIDまたはメールアドレスは既に使われています。";
       return;
     }
     if (data.auto_verified) {
@@ -103,6 +104,7 @@
     localStorage.removeItem("player_id");
     localStorage.removeItem("username");
     playerId = null;
+    $("input-login-id").value = "";
     $("input-username").value = "";
     $("input-email").value = "";
     $("input-password").value = "";
