@@ -24,6 +24,9 @@ app = FastAPI()
 storage.init_db()
 
 
+TURN_TIMEOUT_SECONDS = 60
+
+
 class Room:
     def __init__(self, code: str, max_hp: int, stage: str):
         self.code = code
@@ -37,6 +40,8 @@ class Room:
         self.pending_actions: dict[str, dict] = {}
         self.game_over = False
         self.lock = asyncio.Lock()
+        self.turn_number = 0
+        self.timeout_task: asyncio.Task | None = None
 
     def role_for(self, player_id: str) -> str | None:
         for role, pid in self.players.items():
@@ -54,6 +59,26 @@ def _new_room_code() -> str:
         code = "".join(random.choices(alphabet, k=5))
         if code not in rooms:
             return code
+
+
+@app.post("/api/auth/signup")
+async def api_auth_signup(payload: dict = Body(...)):
+    username = str(payload.get("username", ""))
+    password = str(payload.get("password", ""))
+    result = storage.create_user(username, password)
+    if result is None:
+        return JSONResponse({"error": "username_taken_or_invalid"}, status_code=409)
+    return JSONResponse(result)
+
+
+@app.post("/api/auth/login")
+async def api_auth_login(payload: dict = Body(...)):
+    username = str(payload.get("username", ""))
+    password = str(payload.get("password", ""))
+    result = storage.verify_user(username, password)
+    if result is None:
+        return JSONResponse({"error": "invalid_credentials"}, status_code=401)
+    return JSONResponse(result)
 
 
 @app.get("/api/passive")
@@ -187,6 +212,45 @@ async def _send_state(room: Room, role: str):
     )
 
 
+async def _resolve_turn_and_broadcast(room: Room, action_a: dict, action_b: dict) -> None:
+    state = {
+        "passive_a": room.passives.get("a"),
+        "passive_b": room.passives.get("b"),
+        "hp_a": room.hp["a"],
+        "hp_b": room.hp["b"],
+        "max_hp": room.max_hp,
+        "stage": room.stage,
+        "log": room.log,
+    }
+    result = await run_in_threadpool(game_master.resolve_turn, state, action_a, action_b)
+    room.hp["a"] = max(0, min(room.max_hp, room.hp["a"] + result["hp_delta_a"]))
+    room.hp["b"] = max(0, min(room.max_hp, room.hp["b"] + result["hp_delta_b"]))
+    room.log.append(result["narration"])
+    room.game_over = room.hp["a"] <= 0 or room.hp["b"] <= 0
+    room.turn_number += 1
+    if room.game_over:
+        winner_role = _winner(room)
+        if winner_role in ("a", "b"):
+            storage.add_point(room.players[winner_role])
+    for r in list(room.sockets):
+        await _send_state(room, r)
+
+
+async def _turn_timeout_watcher(room: Room, turn_at_schedule: int, submitted_role: str) -> None:
+    await asyncio.sleep(TURN_TIMEOUT_SECONDS)
+    async with room.lock:
+        if room.turn_number != turn_at_schedule or room.game_over:
+            return
+        if len(room.pending_actions) != 1 or submitted_role not in room.pending_actions:
+            return
+        missing_role = "b" if submitted_role == "a" else "a"
+        room.pending_actions[missing_role] = {"category": None, "text": "(何もしなかった)"}
+        action_a = room.pending_actions.get("a")
+        action_b = room.pending_actions.get("b")
+        room.pending_actions.clear()
+        await _resolve_turn_and_broadcast(room, action_a, action_b)
+
+
 @app.websocket("/ws/{room_code}")
 async def ws_room(websocket: WebSocket, room_code: str, player_id: str):
     await websocket.accept()
@@ -232,7 +296,23 @@ async def ws_room(websocket: WebSocket, room_code: str, player_id: str):
     try:
         while True:
             data = await websocket.receive_json()
-            if data.get("type") != "action" or room.game_over:
+            msg_type = data.get("type")
+
+            if msg_type == "rematch":
+                async with room.lock:
+                    if room.game_over and len(room.players) == 2:
+                        if room.timeout_task and not room.timeout_task.done():
+                            room.timeout_task.cancel()
+                        room.hp = {"a": room.max_hp, "b": room.max_hp}
+                        room.log.append("再戦開始！")
+                        room.game_over = False
+                        room.pending_actions.clear()
+                        room.turn_number += 1
+                        for r in list(room.sockets):
+                            await _send_state(room, r)
+                continue
+
+            if msg_type != "action" or room.game_over:
                 continue
             category = data.get("category")
             if category not in game_master.CATEGORIES:
@@ -240,31 +320,17 @@ async def ws_room(websocket: WebSocket, room_code: str, player_id: str):
             text = str(data.get("text", "")).strip()[:200] or "(何もしなかった)"
             async with room.lock:
                 room.pending_actions[role] = {"category": category, "text": text}
-                if len(room.pending_actions) == 2 and len(room.players) == 2:
+                if len(room.pending_actions) == 1:
+                    room.timeout_task = asyncio.create_task(
+                        _turn_timeout_watcher(room, room.turn_number, role)
+                    )
+                elif len(room.pending_actions) == 2 and len(room.players) == 2:
+                    if room.timeout_task and not room.timeout_task.done():
+                        room.timeout_task.cancel()
                     action_a = room.pending_actions.get("a")
                     action_b = room.pending_actions.get("b")
                     room.pending_actions.clear()
-                    state = {
-                        "passive_a": room.passives.get("a"),
-                        "passive_b": room.passives.get("b"),
-                        "hp_a": room.hp["a"],
-                        "hp_b": room.hp["b"],
-                        "stage": room.stage,
-                        "log": room.log,
-                    }
-                    result = await run_in_threadpool(
-                        game_master.resolve_turn, state, action_a, action_b
-                    )
-                    room.hp["a"] = max(0, min(room.max_hp, room.hp["a"] + result["hp_delta_a"]))
-                    room.hp["b"] = max(0, min(room.max_hp, room.hp["b"] + result["hp_delta_b"]))
-                    room.log.append(result["narration"])
-                    room.game_over = room.hp["a"] <= 0 or room.hp["b"] <= 0
-                    if room.game_over:
-                        winner_role = _winner(room)
-                        if winner_role in ("a", "b"):
-                            storage.add_point(room.players[winner_role])
-                    for r in list(room.sockets):
-                        await _send_state(room, r)
+                    await _resolve_turn_and_broadcast(room, action_a, action_b)
     except WebSocketDisconnect:
         room.sockets.pop(role, None)
 

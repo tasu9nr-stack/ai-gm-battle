@@ -45,6 +45,22 @@ h2 {
   color: var(--text-dim);
 }
 
+.welcome-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.logout-btn {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+
 .card {
   background: var(--panel);
   border-radius: var(--radius);
@@ -155,6 +171,12 @@ button {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid #3a3f57;
+  width: 100%;
+}
+
+.row .btn-secondary,
+.logout-btn {
+  width: auto;
 }
 
 button:disabled {

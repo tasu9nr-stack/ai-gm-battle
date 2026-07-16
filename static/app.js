@@ -16,21 +16,12 @@
   ];
   const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-  function getPlayerId() {
-    let id = localStorage.getItem("player_id");
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem("player_id", id);
-    }
-    return id;
-  }
-
   function todayLocalDateStr() {
     const d = new Date();
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
   }
 
-  const playerId = getPlayerId();
+  let playerId = localStorage.getItem("player_id");
   let ws = null;
   let lastLogLength = 0;
   let actionSubmittedThisRound = false;
@@ -38,13 +29,72 @@
   let pendingGachaPassive = null;
   let battleOver = false;
 
+  const screenLogin = $("screen-login");
   const screenHome = $("screen-home");
   const screenBattle = $("screen-battle");
 
   function showScreen(name) {
+    screenLogin.classList.toggle("hidden", name !== "login");
     screenHome.classList.toggle("hidden", name !== "home");
     screenBattle.classList.toggle("hidden", name !== "battle");
   }
+
+  function enterHome() {
+    $("welcome-username").textContent = localStorage.getItem("username") || playerId;
+    showScreen("home");
+    loadPassive();
+    loadPoints();
+  }
+
+  async function authRequest(path, username, password) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    return { ok: res.ok, data: await res.json().catch(() => ({})) };
+  }
+
+  $("btn-login").addEventListener("click", async () => {
+    const username = $("input-username").value.trim();
+    const password = $("input-password").value;
+    if (!username || !password) return;
+    const { ok, data } = await authRequest("/api/auth/login", username, password);
+    if (!ok) {
+      $("auth-status").textContent = "ユーザー名またはパスワードが違います。";
+      return;
+    }
+    playerId = data.player_id;
+    localStorage.setItem("player_id", playerId);
+    localStorage.setItem("username", username);
+    enterHome();
+  });
+
+  $("btn-signup").addEventListener("click", async () => {
+    const username = $("input-username").value.trim();
+    const password = $("input-password").value;
+    if (!username || !password) return;
+    const { ok, data } = await authRequest("/api/auth/signup", username, password);
+    if (!ok) {
+      $("auth-status").textContent = "そのユーザー名は既に使われています。";
+      return;
+    }
+    playerId = data.player_id;
+    localStorage.setItem("player_id", playerId);
+    localStorage.setItem("username", username);
+    enterHome();
+  });
+
+  $("btn-logout").addEventListener("click", () => {
+    if (ws) ws.close();
+    localStorage.removeItem("player_id");
+    localStorage.removeItem("username");
+    playerId = null;
+    $("input-username").value = "";
+    $("input-password").value = "";
+    $("auth-status").textContent = "";
+    showScreen("login");
+  });
 
   function showPassive(data) {
     $("passive-loading").classList.add("hidden");
@@ -192,6 +242,9 @@
         text = "あなたの敗北...";
       }
       $("game-over-text").textContent = text;
+    } else {
+      $("action-panel").classList.remove("hidden");
+      $("game-over-panel").classList.add("hidden");
     }
   }
 
@@ -263,6 +316,11 @@
 
   $("btn-back-home").addEventListener("click", leaveBattle);
 
+  $("btn-rematch").addEventListener("click", () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "rematch" }));
+  });
+
   $("btn-leave-battle").addEventListener("click", () => {
     if (!battleOver && !confirm("対戦を中断してホームに戻りますか？")) return;
     leaveBattle();
@@ -294,6 +352,9 @@
     $("submit-passive-status").textContent = "申請しました。管理者の採用をお待ちください。";
   });
 
-  loadPassive();
-  loadPoints();
+  if (playerId) {
+    enterHome();
+  } else {
+    showScreen("login");
+  }
 })();

@@ -1,4 +1,6 @@
+import hashlib
 import random
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -112,6 +114,52 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                created_date TEXT NOT NULL
+            )
+            """
+        )
+
+
+def _hash_password(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
+
+
+def create_user(username: str, password: str) -> dict | None:
+    """アカウントを新規作成する。ユーザー名が既に使われていればNoneを返す。"""
+    username = username.strip()[:30]
+    if not username or not password:
+        return None
+    salt = secrets.token_hex(16)
+    password_hash = _hash_password(password, salt)
+    with _conn() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, salt, created_date) VALUES (?, ?, ?, ?)",
+                (username, password_hash, salt, _today()),
+            )
+        except sqlite3.IntegrityError:
+            return None
+    return {"player_id": username}
+
+
+def verify_user(username: str, password: str) -> dict | None:
+    """ユーザー名+パスワードを検証する。一致しなければNoneを返す。"""
+    username = username.strip()[:30]
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ?", (username,)
+        ).fetchone()
+    if row is None:
+        return None
+    if not secrets.compare_digest(_hash_password(password, row["salt"]), row["password_hash"]):
+        return None
+    return {"player_id": username}
 
 
 def _row_to_passive(row: sqlite3.Row) -> dict:
