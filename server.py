@@ -1,11 +1,13 @@
 import asyncio
+import json
 import os
 import random
 import string
+import urllib.request
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +21,7 @@ BASE_DIR = Path(__file__).parent
 DEFAULT_MAX_HP = 100
 MAX_HP_CAP = 999
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 
 app = FastAPI()
 storage.init_db()
@@ -61,14 +64,63 @@ def _new_room_code() -> str:
             return code
 
 
+def _send_verification_email(to_email: str, username: str, token: str, base_url: str) -> bool:
+    if not RESEND_API_KEY:
+        return False
+    verify_url = f"{base_url}/api/auth/verify?token={token}"
+    payload = {
+        "from": "AI GM バトル <onboarding@resend.dev>",
+        "to": [to_email],
+        "subject": "【AI GMバトル】メールアドレスの確認",
+        "html": (
+            f"<p>{username}さん、ご登録ありがとうございます。</p>"
+            f"<p>以下のリンクをクリックしてメールアドレスを確認してください（24時間有効）。</p>"
+            f"<p><a href='{verify_url}'>{verify_url}</a></p>"
+        ),
+    }
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status < 300
+    except Exception:
+        return False
+
+
 @app.post("/api/auth/signup")
-async def api_auth_signup(payload: dict = Body(...)):
+async def api_auth_signup(payload: dict = Body(...), request: Request = None):
     username = str(payload.get("username", ""))
+    email = str(payload.get("email", ""))
     password = str(payload.get("password", ""))
-    result = storage.create_user(username, password)
+    result = storage.create_user(username, email, password)
     if result is None:
-        return JSONResponse({"error": "username_taken_or_invalid"}, status_code=409)
-    return JSONResponse(result)
+        return JSONResponse({"error": "invalid_or_taken"}, status_code=409)
+
+    if not RESEND_API_KEY:
+        # メール送信が未設定な環境（ローカル開発など）では確認をスキップして即利用可能にする。
+        storage.force_verify(username)
+        return JSONResponse({"ok": True, "auto_verified": True, "player_id": username})
+
+    base_url = str(request.base_url).rstrip("/")
+    sent = _send_verification_email(email, username, result["verify_token"], base_url)
+    return JSONResponse({"ok": True, "auto_verified": False, "email_sent": sent})
+
+
+@app.get("/api/auth/verify")
+async def api_auth_verify(token: str):
+    username = storage.verify_email(token)
+    if username is None:
+        return HTMLResponse("<h1>確認リンクが無効か、期限切れです。</h1>", status_code=400)
+    return HTMLResponse(
+        f"<h1>{username} さんのメール確認が完了しました。</h1><p><a href='/'>ログイン画面に戻る</a></p>"
+    )
 
 
 @app.post("/api/auth/login")
@@ -78,6 +130,8 @@ async def api_auth_login(payload: dict = Body(...)):
     result = storage.verify_user(username, password)
     if result is None:
         return JSONResponse({"error": "invalid_credentials"}, status_code=401)
+    if result.get("email_not_verified"):
+        return JSONResponse({"error": "email_not_verified"}, status_code=403)
     return JSONResponse(result)
 
 

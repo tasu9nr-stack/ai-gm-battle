@@ -46,22 +46,25 @@
     loadPoints();
   }
 
-  async function authRequest(path, username, password) {
+  async function authRequest(path, body) {
     const res = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(body),
     });
-    return { ok: res.ok, data: await res.json().catch(() => ({})) };
+    return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   }
 
   $("btn-login").addEventListener("click", async () => {
     const username = $("input-username").value.trim();
     const password = $("input-password").value;
     if (!username || !password) return;
-    const { ok, data } = await authRequest("/api/auth/login", username, password);
+    const { ok, status, data } = await authRequest("/api/auth/login", { username, password });
     if (!ok) {
-      $("auth-status").textContent = "ユーザー名またはパスワードが違います。";
+      $("auth-status").textContent =
+        status === 403
+          ? "メールアドレスがまだ確認されていません。届いたメールのリンクをクリックしてください。"
+          : "ユーザー名またはパスワードが違います。";
       return;
     }
     playerId = data.player_id;
@@ -72,17 +75,27 @@
 
   $("btn-signup").addEventListener("click", async () => {
     const username = $("input-username").value.trim();
+    const email = $("input-email").value.trim();
     const password = $("input-password").value;
-    if (!username || !password) return;
-    const { ok, data } = await authRequest("/api/auth/signup", username, password);
-    if (!ok) {
-      $("auth-status").textContent = "そのユーザー名は既に使われています。";
+    if (!username || !email || !password) {
+      $("auth-status").textContent = "ユーザー名・メールアドレス・パスワードを入力してください。";
       return;
     }
-    playerId = data.player_id;
-    localStorage.setItem("player_id", playerId);
-    localStorage.setItem("username", username);
-    enterHome();
+    const { ok, data } = await authRequest("/api/auth/signup", { username, email, password });
+    if (!ok) {
+      $("auth-status").textContent = "そのユーザー名またはメールアドレスは既に使われています。";
+      return;
+    }
+    if (data.auto_verified) {
+      playerId = data.player_id;
+      localStorage.setItem("player_id", playerId);
+      localStorage.setItem("username", username);
+      enterHome();
+      return;
+    }
+    $("auth-status").textContent = data.email_sent
+      ? "確認メールを送信しました。メール内のリンクをクリックしてからログインしてください。"
+      : "確認メールの送信に失敗しました。時間をおいて再度お試しください。";
   });
 
   $("btn-logout").addEventListener("click", () => {
@@ -91,6 +104,7 @@
     localStorage.removeItem("username");
     playerId = null;
     $("input-username").value = "";
+    $("input-email").value = "";
     $("input-password").value = "";
     $("auth-status").textContent = "";
     showScreen("login");

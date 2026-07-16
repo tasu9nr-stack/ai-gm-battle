@@ -124,32 +124,80 @@ def init_db() -> None:
             )
             """
         )
+        # メール確認機能を後から追加した際のマイグレーション。
+        # 既存ユーザーはemail=NULLのままとなり、ログイン時の確認必須チェックの対象外になる。
+        for coldef in (
+            "ALTER TABLE users ADD COLUMN email TEXT",
+            "ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN verify_token TEXT",
+            "ALTER TABLE users ADD COLUMN verify_token_expires TEXT",
+        ):
+            try:
+                conn.execute(coldef)
+            except sqlite3.OperationalError:
+                pass  # 既に列が存在する
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL"
+        )
 
 
 def _hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000).hex()
 
 
-def create_user(username: str, password: str) -> dict | None:
-    """アカウントを新規作成する。ユーザー名が既に使われていればNoneを返す。"""
+def create_user(username: str, email: str, password: str) -> dict | None:
+    """アカウントを新規作成する。ユーザー名/メールが既に使われていればNoneを返す。"""
     username = username.strip()[:30]
-    if not username or not password:
+    email = email.strip().lower()[:200]
+    if not username or not password or "@" not in email:
         return None
     salt = secrets.token_hex(16)
     password_hash = _hash_password(password, salt)
+    verify_token = secrets.token_urlsafe(32)
+    expires = (datetime.now(JST) + timedelta(hours=24)).isoformat()
     with _conn() as conn:
         try:
             conn.execute(
-                "INSERT INTO users (username, password_hash, salt, created_date) VALUES (?, ?, ?, ?)",
-                (username, password_hash, salt, _today()),
+                """
+                INSERT INTO users
+                    (username, password_hash, salt, created_date, email, email_verified, verify_token, verify_token_expires)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+                """,
+                (username, password_hash, salt, _today(), email, verify_token, expires),
             )
         except sqlite3.IntegrityError:
             return None
-    return {"player_id": username}
+    return {"player_id": username, "email": email, "verify_token": verify_token}
+
+
+def force_verify(username: str) -> None:
+    """メール送信が未設定な環境（ローカル開発など）で確認をスキップする。"""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE username = ?",
+            (username,),
+        )
+
+
+def verify_email(token: str) -> str | None:
+    """確認トークンを検証し、成功したユーザー名を返す。失敗/期限切れならNone。"""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT username, verify_token_expires FROM users WHERE verify_token = ?", (token,)
+        ).fetchone()
+        if row is None:
+            return None
+        if row["verify_token_expires"] and datetime.fromisoformat(row["verify_token_expires"]) < datetime.now(JST):
+            return None
+        conn.execute(
+            "UPDATE users SET email_verified = 1, verify_token = NULL WHERE username = ?",
+            (row["username"],),
+        )
+    return row["username"]
 
 
 def verify_user(username: str, password: str) -> dict | None:
-    """ユーザー名+パスワードを検証する。一致しなければNoneを返す。"""
+    """ユーザー名+パスワードを検証する。不一致ならNone、メール未確認ならemail_not_verifiedを立てて返す。"""
     username = username.strip()[:30]
     with _conn() as conn:
         row = conn.execute(
@@ -159,6 +207,8 @@ def verify_user(username: str, password: str) -> dict | None:
         return None
     if not secrets.compare_digest(_hash_password(password, row["salt"]), row["password_hash"]):
         return None
+    if row["email"] and not row["email_verified"]:
+        return {"email_not_verified": True}
     return {"player_id": username}
 
 
