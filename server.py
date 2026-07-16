@@ -3,6 +3,7 @@ import json
 import os
 import random
 import string
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -90,7 +91,11 @@ def _send_verification_email(to_email: str, username: str, token: str, base_url:
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status < 300
-    except Exception:
+    except urllib.error.HTTPError as e:
+        print(f"[resend] send failed: {e.code} {e.read().decode(errors='replace')}")
+        return False
+    except Exception as e:
+        print(f"[resend] send failed: {e!r}")
         return False
 
 
