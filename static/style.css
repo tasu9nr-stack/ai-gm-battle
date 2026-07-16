@@ -167,6 +167,13 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.leave-btn {
+  width: auto;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+
 .room-code-banner {
   text-align: center;
   background: var(--panel-2);

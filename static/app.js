@@ -36,6 +36,7 @@
   let actionSubmittedThisRound = false;
   let selectedCategory = null;
   let pendingGachaPassive = null;
+  let battleOver = false;
 
   const screenHome = $("screen-home");
   const screenBattle = $("screen-battle");
@@ -114,6 +115,7 @@
     lastLogLength = 0;
     actionSubmittedThisRound = false;
     selectedCategory = null;
+    battleOver = false;
     $("log").innerHTML = "";
     $("game-over-panel").classList.add("hidden");
     $("action-panel").classList.remove("hidden");
@@ -160,6 +162,7 @@
     }
 
     $("waiting-banner").classList.toggle("hidden", !msg.waiting_for_opponent);
+    battleOver = msg.game_over;
 
     if (msg.log.length !== lastLogLength) {
       $("log").innerHTML = msg.log
@@ -252,10 +255,17 @@
     if (e.key === "Enter") $("btn-send-action").click();
   });
 
-  $("btn-back-home").addEventListener("click", () => {
+  function leaveBattle() {
     if (ws) ws.close();
     showScreen("home");
     loadPoints();
+  }
+
+  $("btn-back-home").addEventListener("click", leaveBattle);
+
+  $("btn-leave-battle").addEventListener("click", () => {
+    if (!battleOver && !confirm("対戦を中断してホームに戻りますか？")) return;
+    leaveBattle();
   });
 
   async function loadPoints() {
