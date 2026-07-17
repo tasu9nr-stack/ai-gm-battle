@@ -143,6 +143,16 @@ async def api_auth_login(payload: dict = Body(...)):
     return JSONResponse(result)
 
 
+@app.post("/api/account/username")
+async def api_account_username(payload: dict = Body(...)):
+    player_id = str(payload.get("player_id", ""))
+    new_username = str(payload.get("username", ""))
+    updated = storage.update_username(player_id, new_username)
+    if updated is None:
+        return JSONResponse({"error": "invalid"}, status_code=400)
+    return JSONResponse({"ok": True, "username": updated})
+
+
 @app.get("/api/passive")
 async def api_passive(player_id: str):
     return JSONResponse(storage.get_or_assign_daily_passive(player_id))

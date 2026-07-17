@@ -32,11 +32,24 @@
   const screenLogin = $("screen-login");
   const screenHome = $("screen-home");
   const screenBattle = $("screen-battle");
+  const screenMypage = $("screen-mypage");
 
   function showScreen(name) {
     screenLogin.classList.toggle("hidden", name !== "login");
     screenHome.classList.toggle("hidden", name !== "home");
     screenBattle.classList.toggle("hidden", name !== "battle");
+    screenMypage.classList.toggle("hidden", name !== "mypage");
+    if (name === "login") showLoginCard();
+  }
+
+  function showLoginCard() {
+    $("login-card").classList.remove("hidden");
+    $("signup-card").classList.add("hidden");
+  }
+
+  function showSignupCard() {
+    $("login-card").classList.add("hidden");
+    $("signup-card").classList.remove("hidden");
   }
 
   function enterHome() {
@@ -54,6 +67,9 @@
     });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   }
+
+  $("btn-show-signup").addEventListener("click", showSignupCard);
+  $("btn-back-to-login").addEventListener("click", showLoginCard);
 
   $("btn-login").addEventListener("click", async () => {
     const loginId = $("input-login-id").value.trim();
@@ -74,17 +90,17 @@
   });
 
   $("btn-signup").addEventListener("click", async () => {
-    const loginId = $("input-login-id").value.trim();
-    const username = $("input-username").value.trim();
-    const email = $("input-email").value.trim();
-    const password = $("input-password").value;
+    const username = $("input-signup-username").value.trim();
+    const loginId = $("input-signup-login-id").value.trim();
+    const email = $("input-signup-email").value.trim();
+    const password = $("input-signup-password").value;
     if (!loginId || !username || !email || !password) {
-      $("auth-status").textContent = "ログインID・表示名・メールアドレス・パスワードを入力してください。";
+      $("signup-status").textContent = "表示名・ログインID・メールアドレス・パスワードを入力してください。";
       return;
     }
     const { ok, data } = await authRequest("/api/auth/signup", { username, login_id: loginId, email, password });
     if (!ok) {
-      $("auth-status").textContent = "そのログインIDまたはメールアドレスは既に使われています。";
+      $("signup-status").textContent = "そのログインIDまたはメールアドレスは既に使われています。";
       return;
     }
     if (data.auto_verified) {
@@ -94,7 +110,7 @@
       enterHome();
       return;
     }
-    $("auth-status").textContent = data.email_sent
+    $("signup-status").textContent = data.email_sent
       ? "確認メールを送信しました。メール内のリンクをクリックしてからログインしてください。"
       : "確認メールの送信に失敗しました。時間をおいて再度お試しください。";
   });
@@ -105,11 +121,40 @@
     localStorage.removeItem("username");
     playerId = null;
     $("input-login-id").value = "";
-    $("input-username").value = "";
-    $("input-email").value = "";
     $("input-password").value = "";
+    $("input-signup-username").value = "";
+    $("input-signup-login-id").value = "";
+    $("input-signup-email").value = "";
+    $("input-signup-password").value = "";
     $("auth-status").textContent = "";
+    $("signup-status").textContent = "";
     showScreen("login");
+  });
+
+  $("btn-mypage").addEventListener("click", () => {
+    $("input-mypage-username").value = localStorage.getItem("username") || "";
+    $("mypage-status").textContent = "";
+    showScreen("mypage");
+  });
+
+  $("btn-mypage-back").addEventListener("click", () => showScreen("home"));
+
+  $("btn-save-username").addEventListener("click", async () => {
+    const newUsername = $("input-mypage-username").value.trim();
+    if (!newUsername) return;
+    const res = await fetch("/api/account/username", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ player_id: playerId, username: newUsername }),
+    });
+    if (!res.ok) {
+      $("mypage-status").textContent = "変更できませんでした。";
+      return;
+    }
+    const data = await res.json();
+    localStorage.setItem("username", data.username);
+    $("welcome-username").textContent = data.username;
+    $("mypage-status").textContent = "表示名を変更しました。";
   });
 
   function showPassive(data) {

@@ -216,6 +216,18 @@ def verify_user(login_id: str, password: str) -> dict | None:
     return {"player_id": login_id, "username": row["username"]}
 
 
+def update_username(login_id: str, new_username: str) -> str | None:
+    """表示名を変更する。ログインIDは変わらない。成功したら新しい表示名を返す。"""
+    new_username = new_username.strip()[:30]
+    if not new_username:
+        return None
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE users SET username = ? WHERE login_id = ?", (new_username, login_id)
+        )
+    return new_username if cur.rowcount > 0 else None
+
+
 def _row_to_passive(row: sqlite3.Row) -> dict:
     return {
         "name": row["passive_name"],

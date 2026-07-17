@@ -11,20 +11,43 @@
 
   <section id="screen-login" class="screen">
     <h1>AI GM バトル</h1>
-    <div class="card">
+
+    <div id="login-card" class="card">
       <h2>ログイン</h2>
-      <p class="hint">ログインIDとパスワードで、同じ端末じゃなくても自分のパッシブ・ポイントを引き継ぎます。</p>
-      <label class="field-label" for="input-login-id">ログインID（重複不可）</label>
+      <label class="field-label" for="input-login-id">ログインID</label>
       <input id="input-login-id" placeholder="ログインID" maxlength="30">
-      <label class="field-label" for="input-username">表示名（新規登録時のみ・重複OK）</label>
-      <input id="input-username" placeholder="表示名" maxlength="30">
-      <label class="field-label" for="input-email">メールアドレス（新規登録時のみ）</label>
-      <input id="input-email" type="email" placeholder="メールアドレス">
       <label class="field-label" for="input-password">パスワード</label>
       <input id="input-password" type="password" placeholder="パスワード">
       <button id="btn-login" class="btn-primary">ログイン</button>
-      <button id="btn-signup" class="btn-secondary">新規登録</button>
+      <button id="btn-show-signup" class="btn-secondary">新規登録</button>
       <div id="auth-status" class="hint"></div>
+    </div>
+
+    <div id="signup-card" class="card hidden">
+      <h2>新規登録</h2>
+      <label class="field-label" for="input-signup-username">表示名（重複OK・後で変更できます）</label>
+      <input id="input-signup-username" placeholder="表示名" maxlength="30">
+      <label class="field-label" for="input-signup-login-id">ログインID（重複不可）</label>
+      <input id="input-signup-login-id" placeholder="ログインID" maxlength="30">
+      <label class="field-label" for="input-signup-email">メールアドレス</label>
+      <input id="input-signup-email" type="email" placeholder="メールアドレス">
+      <label class="field-label" for="input-signup-password">パスワード</label>
+      <input id="input-signup-password" type="password" placeholder="パスワード">
+      <button id="btn-signup" class="btn-primary">登録する</button>
+      <button id="btn-back-to-login" class="btn-secondary">戻る</button>
+      <div id="signup-status" class="hint"></div>
+    </div>
+  </section>
+
+  <section id="screen-mypage" class="screen hidden">
+    <h1>AI GM バトル</h1>
+    <div class="card">
+      <h2>マイページ</h2>
+      <label class="field-label" for="input-mypage-username">表示名</label>
+      <input id="input-mypage-username" placeholder="表示名" maxlength="30">
+      <button id="btn-save-username" class="btn-primary">保存</button>
+      <div id="mypage-status" class="hint"></div>
+      <button id="btn-mypage-back" class="btn-secondary">ホームに戻る</button>
     </div>
   </section>
 
@@ -32,6 +55,7 @@
     <h1>AI GM バトル</h1>
     <div class="welcome-row">
       <span id="welcome-username"></span>さん、ようこそ
+      <button id="btn-mypage" class="btn-secondary logout-btn">マイページ</button>
       <button id="btn-logout" class="btn-secondary logout-btn">ログアウト</button>
     </div>
 
