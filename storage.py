@@ -134,13 +134,31 @@ def init_db() -> None:
         )
 
 
-def reset_all_data() -> None:
-    """全ゲームデータを削除して初期状態に戻す（アカウント・パッシブ・ポイント・申請すべて）。
-    テーブル構造はinit_db()で直後に再作成される。"""
+# 管理画面から個別にリセットできる対象。キーはAPI/フロントから渡される識別子、
+# 値は画面表示用のラベル。
+RESETTABLE_TABLES = {
+    "users": "アカウント（ログイン情報）",
+    "daily_assignment": "本日のパッシブ配布状況",
+    "catalog_extra": "採用済みの自作パッシブ",
+    "players": "ポイント",
+    "custom_submissions": "自作パッシブ申請履歴",
+}
+
+
+def reset_table(key: str) -> bool:
+    """指定したテーブルのデータだけを削除する。存在しないキーならFalseを返す。"""
+    if key not in RESETTABLE_TABLES:
+        return False
     with _conn() as conn:
-        for table in ("users", "daily_assignment", "players", "custom_submissions", "catalog_extra"):
-            conn.execute(f"DROP TABLE IF EXISTS {table}")
-    init_db()
+        conn.execute(f"DELETE FROM {key}")
+    return True
+
+
+def reset_all_data() -> None:
+    """全ゲームデータを削除して初期状態に戻す（アカウント・パッシブ・ポイント・申請すべて）。"""
+    with _conn() as conn:
+        for table in RESETTABLE_TABLES:
+            conn.execute(f"DELETE FROM {table}")
 
 
 def _hash_password(password: str, salt: str) -> str:

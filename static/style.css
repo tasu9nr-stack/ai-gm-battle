@@ -189,6 +189,17 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+.turn-status-banner {
+  text-align: center;
+  margin: 0 0 10px;
+  min-height: 1em;
+}
+
+.turn-status-banner.urgent {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .leave-btn {
   width: auto;
   padding: 8px 12px;

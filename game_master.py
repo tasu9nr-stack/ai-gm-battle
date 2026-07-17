@@ -26,6 +26,13 @@ _KEYWORDS = {
     "カウンター": ["反撃", "カウンター", "受け流", "返す", "いなす", "捌く"],
 }
 
+# 明らかに何も仕掛けていない宣言（カテゴリに関わらずダメージを与えない）。
+_PASSIVE_TEXT_KEYWORDS = ["寝る", "眠", "休む", "何もしない", "様子を見る", "見守る", "傍観", "ぼーっと"]
+
+
+def _implies_no_action(text: str) -> bool:
+    return any(kw in text for kw in _PASSIVE_TEXT_KEYWORDS)
+
 # パッシブの説明文からキーワードで効果タイプを推定する。
 # 静的カタログだけでなく、管理者が採用した自己申告パッシブにもそのまま効く。
 EFFECT_KEYWORDS = {
@@ -121,6 +128,8 @@ def resolve_turn(state: dict, action_a: dict, action_b: dict) -> dict:
                 "その上で、宣言テキストの内容が宣言カテゴリと矛盾していないかを見て、"
                 "矛盾がなければ相性表の有利不利を軽く反映してください（あくまで弱めの補正であり、絶対的な優劣ではありません）。"
                 "矛盾していれば相性表は適用せず、行動内容の説得力・状況にふさわしさだけで自由に判定してください。"
+                "「寝る」「休む」「様子を見る」等、宣言カテゴリに関わらず明らかに何も仕掛けていない行動は、"
+                "相手にダメージを与えないでください（自分が被ダメージを受けるのは構いません）。"
                 "宣言カテゴリがnull（未入力）だった側は、ほぼ攻撃できず、隙が生まれてやや被ダメージが増える扱いにしてください。"
                 "低確率（15%程度）でどちらのHPもほとんど変化しない「拮抗したターン」があってもよく、"
                 "低確率（10〜15%程度）で舞台や状況を揺さぶる小さなイベントの描写を挟んでも構いません。"
@@ -223,14 +232,23 @@ def _mock_resolve_turn(state: dict, action_a: dict, action_b: dict) -> dict:
     idle_a = cat_a is None
     idle_b = cat_b is None
 
-    base_a = 0 if idle_a else random.randint(5, 18)
-    base_b = 0 if idle_b else random.randint(5, 18)
-
     match_a = (not idle_a) and _keyword_match(cat_a, text_a)
     match_b = (not idle_b) and _keyword_match(cat_b, text_b)
+    passive_text_a = (not idle_a) and _implies_no_action(text_a)
+    passive_text_b = (not idle_b) and _implies_no_action(text_b)
+
+    def _roll_base(idle: bool, passive_text: bool, matched: bool) -> int:
+        if idle or passive_text:
+            return 0  # 何もしていない/明確に無害な宣言はダメージを与えない
+        if not matched:
+            return random.randint(2, 10)  # カテゴリと内容が噛み合っていない曖昧な行動
+        return random.randint(5, 18)
+
+    base_a = _roll_base(idle_a, passive_text_a, match_a)
+    base_b = _roll_base(idle_b, passive_text_b, match_b)
 
     note = ""
-    if not (idle_a or idle_b):
+    if not (idle_a or idle_b or passive_text_a or passive_text_b):
         if match_a and match_b:
             adv = category_advantage(cat_a, cat_b)
             if adv == "A":

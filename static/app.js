@@ -28,6 +28,8 @@
   let selectedCategory = null;
   let pendingGachaPassive = null;
   let battleOver = false;
+  let turnDeadline = null;
+  let countdownInterval = null;
 
   const screenLogin = $("screen-login");
   const screenHome = $("screen-home");
@@ -221,12 +223,39 @@
     return `${proto}://${location.host}/ws/${roomCode}?player_id=${encodeURIComponent(playerId)}`;
   }
 
+  function updateTurnStatusBanner(msg) {
+    const parts = [msg.opponent_declared ? "相手は宣言済みです" : "相手はまだ宣言していません"];
+    let urgent = false;
+    if (turnDeadline) {
+      const remaining = Math.max(0, Math.ceil(turnDeadline - Date.now() / 1000));
+      parts.push(`残り${remaining}秒`);
+      urgent = remaining <= 10;
+      if (remaining <= 0 && countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }
+    $("turn-status-banner").textContent = parts.join(" / ");
+    $("turn-status-banner").classList.toggle("urgent", urgent);
+  }
+
+  function stopCountdown() {
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+    turnDeadline = null;
+    $("turn-status-banner").textContent = "";
+    $("turn-status-banner").classList.remove("urgent");
+  }
+
   function connectRoom(roomCode) {
     showScreen("battle");
     lastLogLength = 0;
     actionSubmittedThisRound = false;
     selectedCategory = null;
     battleOver = false;
+    stopCountdown();
     $("log").innerHTML = "";
     $("game-over-panel").classList.add("hidden");
     $("action-panel").classList.remove("hidden");
@@ -274,6 +303,20 @@
 
     $("waiting-banner").classList.toggle("hidden", !msg.waiting_for_opponent);
     battleOver = msg.game_over;
+
+    turnDeadline = msg.turn_deadline || null;
+    if (!msg.waiting_for_opponent && !msg.game_over) {
+      updateTurnStatusBanner(msg);
+      if (turnDeadline && !countdownInterval) {
+        countdownInterval = setInterval(() => updateTurnStatusBanner(msg), 1000);
+      }
+      if (!turnDeadline && countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    } else {
+      stopCountdown();
+    }
 
     if (msg.log.length !== lastLogLength) {
       $("log").innerHTML = msg.log

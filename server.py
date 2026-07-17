@@ -3,6 +3,7 @@ import json
 import os
 import random
 import string
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -46,6 +47,7 @@ class Room:
         self.lock = asyncio.Lock()
         self.turn_number = 0
         self.timeout_task: asyncio.Task | None = None
+        self.turn_deadline: float | None = None  # time.time()ベースのUNIX秒
 
     def role_for(self, player_id: str) -> str | None:
         for role, pid in self.players.items():
@@ -225,6 +227,13 @@ async def api_admin_reject(submission_id: int, key: str = ""):
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/admin/resettable")
+async def api_admin_resettable(key: str = ""):
+    if not _check_admin_key(key):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    return JSONResponse(storage.RESETTABLE_TABLES)
+
+
 @app.post("/api/admin/reset")
 async def api_admin_reset(key: str = ""):
     """全アカウント・パッシブ・ポイント・申請を削除して初期状態に戻す。取り消せません。"""
@@ -232,6 +241,19 @@ async def api_admin_reset(key: str = ""):
         return JSONResponse({"error": "forbidden"}, status_code=403)
     storage.reset_all_data()
     rooms.clear()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/admin/reset/{table}")
+async def api_admin_reset_table(table: str, key: str = ""):
+    """指定した項目だけをリセットする。取り消せません。"""
+    if not _check_admin_key(key):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    ok = storage.reset_table(table)
+    if not ok:
+        return JSONResponse({"error": "invalid_table"}, status_code=400)
+    if table == "users":
+        rooms.clear()  # アカウントが消えると既存の部屋も維持できないため
     return JSONResponse({"ok": True})
 
 
@@ -290,11 +312,15 @@ async def _send_state(room: Room, role: str):
             "waiting_for_opponent": len(room.players) < 2,
             "game_over": room.game_over,
             "winner": _winner(room),
+            "you_declared": role in room.pending_actions,
+            "opponent_declared": opponent_role in room.pending_actions,
+            "turn_deadline": room.turn_deadline,
         }
     )
 
 
 async def _resolve_turn_and_broadcast(room: Room, action_a: dict, action_b: dict) -> None:
+    room.turn_deadline = None
     state = {
         "passive_a": room.passives.get("a"),
         "passive_b": room.passives.get("b"),
@@ -389,6 +415,7 @@ async def ws_room(websocket: WebSocket, room_code: str, player_id: str):
                         room.log.append("再戦開始！")
                         room.game_over = False
                         room.pending_actions.clear()
+                        room.turn_deadline = None
                         room.turn_number += 1
                         for r in list(room.sockets):
                             await _send_state(room, r)
@@ -403,9 +430,12 @@ async def ws_room(websocket: WebSocket, room_code: str, player_id: str):
             async with room.lock:
                 room.pending_actions[role] = {"category": category, "text": text}
                 if len(room.pending_actions) == 1:
+                    room.turn_deadline = time.time() + TURN_TIMEOUT_SECONDS
                     room.timeout_task = asyncio.create_task(
                         _turn_timeout_watcher(room, room.turn_number, role)
                     )
+                    for r in list(room.sockets):
+                        await _send_state(room, r)
                 elif len(room.pending_actions) == 2 and len(room.players) == 2:
                     if room.timeout_task and not room.timeout_task.done():
                         room.timeout_task.cancel()

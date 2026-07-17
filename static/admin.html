@@ -21,6 +21,12 @@
   <div id="empty-state" class="hidden">未採用の申告はありません。</div>
 
   <div class="card" style="margin-top:24px;">
+    <h2>⚠️ 項目別リセット</h2>
+    <p class="hint">項目ごとに個別にデータを削除できます。取り消せません。</p>
+    <div id="reset-items"></div>
+  </div>
+
+  <div class="card">
     <h2>⚠️ 全データリセット</h2>
     <p class="hint">全アカウント・パッシブ・ポイント・申請を削除して初期状態に戻します。取り消せません。</p>
     <button id="btn-reset-all" class="btn-secondary" style="border-color:var(--danger); color:var(--danger);">全部リセットする</button>
@@ -84,7 +90,34 @@
     load();
   });
 
+  async function loadResettable() {
+    const res = await fetch(`/api/admin/resettable?key=${encodeURIComponent(key)}`);
+    if (!res.ok) return;
+    const items = await res.json();
+    $("reset-items").innerHTML = Object.entries(items)
+      .map(
+        ([table, label]) => `
+        <div class="row" style="align-items:center; margin-bottom:8px;">
+          <div style="flex:1;">${escapeHtml(label)}</div>
+          <button class="btn-secondary btn-reset-item" data-table="${table}" data-label="${escapeHtml(label)}" style="border-color:var(--danger); color:var(--danger);">リセット</button>
+        </div>`
+      )
+      .join("");
+
+    document.querySelectorAll(".btn-reset-item").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const table = btn.dataset.table;
+        const answer = prompt(`「${btn.dataset.label}」を削除します。よければ「リセット」と入力してください。`);
+        if (answer !== "リセット") return;
+        const res = await fetch(`/api/admin/reset/${table}?key=${encodeURIComponent(key)}`, { method: "POST" });
+        $("reset-status").textContent = res.ok ? `「${btn.dataset.label}」をリセットしました。` : "リセットに失敗しました。";
+        load();
+      });
+    });
+  }
+
   load();
+  loadResettable();
 })();
 </script>
 </body>
