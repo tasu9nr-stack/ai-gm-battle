@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
 
 import game_master
 import storage
